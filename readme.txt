@@ -1,3 +1,2 @@
-That is a distributed version control system.
-Git is free software distributed under the GPL.
-Greating a new branch is quick.
+ping.sh脚本用于检测空闲的IP
+使用方法： sh ping.sh | tee ip.txt
