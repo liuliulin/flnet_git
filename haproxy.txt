@@ -1,0 +1,138 @@
+# Haproxy
+
+# 安装
+tar xf haproxy-1.4.27.tar.gz
+cd haproxy-1.4.27
+make TARGET=linux2628 ARCH=x86_64
+make PREFIX=/usr/local/haproxy install
+
+# 打开转发
+sysctl -p
+net.ipv4.ip_forward = 1
+
+# 
+tree
+.
+├── doc
+│   └── haproxy
+│       ├── architecture.txt
+│       ├── configuration.txt
+│       ├── haproxy-en.txt
+│       └── haproxy-fr.txt
+├── sbin
+│   └── haproxy
+└── share
+    └── man
+        └── man1
+            └── haproxy.1
+			
+#
+mkdir -p bin conf logs var/run var/chroot
+
+#
+vi conf/ha.conf
+# tcp
+global
+    chroot /usr/local/haproxy/var/chroot
+    daemon
+    user haproxy
+    group haproxy
+    log 127.0.0.1:514 local0 warning
+    pidfile /usr/local/haproxy/var/run/haproxy.pid
+    maxconn 20480
+    spread-checks 3
+    nbproc 4
+
+defaults
+    log global
+    mode tcp #{http|tcp}
+    retries 3
+    option redispatch
+    timeout connect 5000ms
+    timeout client 50000ms
+    timeout server 50000ms
+
+listen ssh
+    bind 10.138.0.7:443
+    mode tcp
+    balance    roundrobin
+    timeout server 15s
+    timeout connect 15s
+    server ssh01 10.138.0.15:22 check port 22 inter 5000 fall 5
+    server ssh02 10.138.0.16:22 check port 22 inter 5000 fall 5
+
+#HTTP
+
+global
+    chroot /usr/local/haproxy/var/chroot
+    daemon
+    user haproxy
+    group haproxy
+    log 127.0.0.1:514 local0 warning
+    piffile /usr/local/haproxy/var/run/haproxy.pid
+    maxconn 20480
+    spread-checks 3
+    nbproc 4
+	
+defaults
+    log global
+    mode http #{http|tcp}
+    retries 3
+    option redispatch
+    timeout connect 5000ms
+    timeout client 50000ms
+    timeout server 50000ms
+
+listen www
+    bind 10.138.0.7:8080
+    mode http
+    stats enable
+    stats hide-version
+    stats uri    /admin?status
+    stats auth    admin:1234
+    balance    roundrobin
+    option    httpclose
+    option    forwardfor
+    cookie    SERVERID insert indirect
+    timeout server 15s
+    timeout connect 15s
+	#option httpchk GET /check.txt
+	#option httpchk HEAD /check.html HTTP/1.0 #健康检查
+    server web01 10.138.0.15:80 cookie A check port 80 inter 5000 fall 5
+    server web02 10.138.0.16:80 cookid B check port 80 inter 5000 fall 5
+	server seb03 10.138.0.1:80 maxconn 20480 weight 8 check port 80 inter 3000 fall 3 rise 2
+    server web04 10.138.0.16:80 cookid B check port 80 inter 5000 fall 5 backup
+
+#manconn 指定服务器最大并发量，inter检查间隔ms,fall 尝试次数，rise 服务恢复后确认次数,
+#backup 其它服务器全挂了才生效
+
+# 可以根据虚拟主机做健康检查
+option httpchk GET /
+option httpchk GET /check.html HTTP/1.1\r\nHost:bbs.flnet.com
+
+# 记录客户端真实IP
+在listen 选项中增加
+option forwardfor
+
+
+#	
+useradd haproxy -s /sbin/nologin 	
+
+# 启动服务
+./sbin/haproxy -f conf/ha.conf -c
+./sbin/haproxy -f conf/ha.conf -D
+
+# 平滑重启 -q (忽略警告)
+./sbin/haproxy -f conf/ha.conf -q -sf $(cat pid/pidfile)
+
+# 记录日志
+vi /etc/rsyslog.conf
+13 $ModLoad imudp
+14 $UDPServerRun 514
+   local0.*    /var/log/haproxy.log
+
+ vi /etc/sysconfig/rsyslog
+SYSLOGD_OPTIONS="-c 2 -m 0 -r -x"
+
+# 
+net.ipv4.ip_nonlocal_bind = 1
