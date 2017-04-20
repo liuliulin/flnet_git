@@ -1,0 +1,409 @@
+
+# 确定时间同步
+ntpdate pool.ntp.org
+
+# 安装lzo压缩模块
+wget http://www.oberhumer.com/opensource/lzo/download/lzo-2.06.tar.gz
+tar xf lzo-2.06.tar.gz
+cd lzo-2.06
+./configure --prefix=/usr/local/lzo
+make
+make install
+echo $?
+
+# 安装openvpn (需要安装openssl-devel,pam-devel)
+wget http://www.openvpn.net/release/openvpn-2.2.2.tar.gz
+tar xf openvpn-2.2.2.tar.gz
+cd openvpn-2.2.2
+./configure --prefix=/usr/local/openvpn --with-lzo-headers=/usr/local/lzo/include --with-lzo-lib=/usr/local/lzo/lib
+make
+make install
+
+# 配置CA证书
+cd openvpn-2.2.2/easy-rsa/2.0
+
+修改vars 的环境变量
+cp vars vars.bak
+diff vars.bak vars
+64,72c64,72
+< export KEY_COUNTRY="US"
+< export KEY_PROVINCE="CA"
+< export KEY_CITY="SanFrancisco"
+< export KEY_ORG="Fort-Funston"
+< export KEY_EMAIL="me@myhost.mydomain"
+< export KEY_EMAIL=mail@host.domain
+< export KEY_CN=changeme
+< export KEY_NAME=changeme
+< export KEY_OU=changeme
+---
+> export KEY_COUNTRY="CN"
+> export KEY_PROVINCE="GD"
+> export KEY_CITY="ShenZhen"
+> export KEY_ORG="Foxconn"
+> export KEY_EMAIL="547341734@qq.com"
+> export KEY_EMAIL=547341734@qq.com
+> export KEY_CN=openvpn
+> export KEY_NAME=Foxconn
+> export KEY_OU=PDSS
+
+# 初始化keys 
+./clean-all
+
+#建立CA证书
+./build-ca
+ll keys/
+total 12
+-rw-r--r--. 1 root root 1322 Oct 14 09:24 ca.crt
+-rw-------. 1 root root  916 Oct 14 09:24 ca.key
+
+# 生成服务器端的证书
+
+./build-key-server server
+Generating a 1024 bit RSA private key
+......++++++
+..........................++++++
+writing new private key to 'server.key'
+-----
+You are about to be asked to enter information that will be incorporated
+into your certificate request.
+What you are about to enter is what is called a Distinguished Name or a DN.
+There are quite a few fields but you can leave some blank
+For some fields there will be a default value,
+If you enter '.', the field will be left blank.
+-----
+Country Name (2 letter code) [CN]:
+State or Province Name (full name) [GD]:
+Locality Name (eg, city) [ShenZhen]:
+Organization Name (eg, company) [Foxconn]:
+Organizational Unit Name (eg, section) [PDSS]:
+Common Name (eg, your name or your server's hostname) [server]:
+Name [Foxconn]:
+Email Address [547341734@qq.com]:
+
+Please enter the following 'extra' attributes
+to be sent with your certificate request
+A challenge password []:123456   #密码
+An optional company name []:Foxconn
+Using configuration from /root/op/openvpn-2.2.2/easy-rsa/2.0/openssl-1.0.0.cnf
+Check that the request matches the signature
+Signature ok
+The Subject's Distinguished Name is as follows
+countryName           :PRINTABLE:'CN'
+stateOrProvinceName   :PRINTABLE:'GD'
+localityName          :PRINTABLE:'ShenZhen'
+organizationName      :PRINTABLE:'Foxconn'
+organizationalUnitName:PRINTABLE:'PDSS'
+commonName            :PRINTABLE:'server'
+name                  :PRINTABLE:'Foxconn'
+emailAddress          :IA5STRING:'547341734@qq.com'
+Certificate is to be certified until Oct 12 01:28:40 2026 GMT (3650 days)
+Sign the certificate? [y/n]:y
+
+
+1 out of 1 certificate requests certified, commit? [y/n]y
+Write out database with 1 new entries
+Data Base Updated
+
+ll keys/
+total 40
+-rw-r--r--. 1 root root 4015 Oct 14 09:28 01.pem
+-rw-r--r--. 1 root root 1322 Oct 14 09:24 ca.crt
+-rw-------. 1 root root  916 Oct 14 09:24 ca.key
+-rw-r--r--. 1 root root  122 Oct 14 09:28 index.txt
+-rw-r--r--. 1 root root   21 Oct 14 09:28 index.txt.attr
+-rw-r--r--. 1 root root    0 Oct 14 09:23 index.txt.old
+-rw-r--r--. 1 root root    3 Oct 14 09:28 serial
+-rw-r--r--. 1 root root    3 Oct 14 09:23 serial.old
+-rw-r--r--. 1 root root 4015 Oct 14 09:28 server.crt
+-rw-r--r--. 1 root root  773 Oct 14 09:28 server.csr
+-rw-------. 1 root root  916 Oct 14 09:28 server.key
+
+# 生成客户端的证书和KEY文件
+./build-key test
+Generating a 1024 bit RSA private key
+........................++++++
+...............++++++
+writing new private key to 'test.key'
+-----
+You are about to be asked to enter information that will be incorporated
+into your certificate request.
+What you are about to enter is what is called a Distinguished Name or a DN.
+There are quite a few fields but you can leave some blank
+For some fields there will be a default value,
+If you enter '.', the field will be left blank.
+-----
+Country Name (2 letter code) [CN]:
+State or Province Name (full name) [GD]:
+Locality Name (eg, city) [ShenZhen]:
+Organization Name (eg, company) [Foxconn]:
+Organizational Unit Name (eg, section) [PDSS]:
+Common Name (eg, your name or your server's hostname) [test]:
+Name [Foxconn]:
+Email Address [547341734@qq.com]:
+
+Please enter the following 'extra' attributes
+to be sent with your certificate request
+A challenge password []:123456
+An optional company name []:Foxconn
+Using configuration from /root/op/openvpn-2.2.2/easy-rsa/2.0/openssl-1.0.0.cnf
+Check that the request matches the signature
+Signature ok
+The Subject's Distinguished Name is as follows
+countryName           :PRINTABLE:'CN'
+stateOrProvinceName   :PRINTABLE:'GD'
+localityName          :PRINTABLE:'ShenZhen'
+organizationName      :PRINTABLE:'Foxconn'
+organizationalUnitName:PRINTABLE:'PDSS'
+commonName            :PRINTABLE:'test'
+name                  :PRINTABLE:'Foxconn'
+emailAddress          :IA5STRING:'547341734@qq.com'
+Certificate is to be certified until Oct 12 01:34:16 2026 GMT (3650 days)
+Sign the certificate? [y/n]:y
+
+
+1 out of 1 certificate requests certified, commit? [y/n]y
+Write out database with 1 new entries
+Data Base Updated
+
+ll keys/
+total 64
+-rw-r--r--. 1 root root 4015 Oct 14 09:28 01.pem
+-rw-r--r--. 1 root root 3891 Oct 14 09:34 02.pem
+-rw-r--r--. 1 root root 1322 Oct 14 09:24 ca.crt
+-rw-------. 1 root root  916 Oct 14 09:24 ca.key
+-rw-r--r--. 1 root root  242 Oct 14 09:34 index.txt
+-rw-r--r--. 1 root root   21 Oct 14 09:34 index.txt.attr
+-rw-r--r--. 1 root root   21 Oct 14 09:28 index.txt.attr.old
+-rw-r--r--. 1 root root  122 Oct 14 09:28 index.txt.old
+-rw-r--r--. 1 root root    3 Oct 14 09:34 serial
+-rw-r--r--. 1 root root    3 Oct 14 09:28 serial.old
+-rw-r--r--. 1 root root 4015 Oct 14 09:28 server.crt
+-rw-r--r--. 1 root root  773 Oct 14 09:28 server.csr
+-rw-------. 1 root root  916 Oct 14 09:28 server.key
+-rw-r--r--. 1 root root 3891 Oct 14 09:34 test.crt
+-rw-r--r--. 1 root root  769 Oct 14 09:34 test.csr
+-rw-------. 1 root root  916 Oct 14 09:34 test.key
+
+# 创建带密码验证的客户端证书
+./build-key-pass ett
+Generating a 1024 bit RSA private key
+.............++++++
+.....++++++
+writing new private key to 'ett.key'
+Enter PEM pass phrase:   #输入密码
+Verifying - Enter PEM pass phrase:   #确认密码
+-----
+You are about to be asked to enter information that will be incorporated
+into your certificate request.
+What you are about to enter is what is called a Distinguished Name or a DN.
+There are quite a few fields but you can leave some blank
+For some fields there will be a default value,
+If you enter '.', the field will be left blank.
+-----
+Country Name (2 letter code) [CN]:
+State or Province Name (full name) [GD]:
+Locality Name (eg, city) [ShenZhen]:
+Organization Name (eg, company) [Foxconn]:
+Organizational Unit Name (eg, section) [PDSS]:
+Common Name (eg, your name or your server's hostname) [ett]:
+Name [Foxconn]:
+Email Address [547341734@qq.com]:
+
+Please enter the following 'extra' attributes
+to be sent with your certificate request
+A challenge password []:123456
+An optional company name []:Foxconn
+Using configuration from /root/op/openvpn-2.2.2/easy-rsa/2.0/openssl-1.0.0.cnf
+Check that the request matches the signature
+Signature ok
+The Subject's Distinguished Name is as follows
+countryName           :PRINTABLE:'CN'
+stateOrProvinceName   :PRINTABLE:'GD'
+localityName          :PRINTABLE:'ShenZhen'
+organizationName      :PRINTABLE:'Foxconn'
+organizationalUnitName:PRINTABLE:'PDSS'
+commonName            :PRINTABLE:'ett'
+name                  :PRINTABLE:'Foxconn'
+emailAddress          :IA5STRING:'547341734@qq.com'
+Certificate is to be certified until Oct 12 01:37:42 2026 GMT (3650 days)
+Sign the certificate? [y/n]:y
+
+
+1 out of 1 certificate requests certified, commit? [y/n]y
+Write out database with 1 new entries
+Data Base Updated
+
+
+# 生成传输进行密钥交换时用到的交换密钥协议文件
+./build-dh 
+Generating DH parameters, 1024 bit long safe prime, generator 2
+This is going to take a long time
+
+ll keys/dh1024.pem 
+-rw-r--r--. 1 root root 245 Oct 14 09:42 keys/dh1024.pem
+
+# 文件说明
+ll keys/
+total 84
+-rw-r--r--. 1 root root 4015 Oct 14 09:28 01.pem
+-rw-r--r--. 1 root root 3891 Oct 14 09:34 02.pem
+-rw-r--r--. 1 root root 3886 Oct 14 09:37 03.pem
+-rw-r--r--. 1 root root 1322 Oct 14 09:24 ca.crt	#服务器及客户端都需要
+-rw-------. 1 root root  916 Oct 14 09:24 ca.key	#加密，服务器需要
+-rw-r--r--. 1 root root  245 Oct 14 09:42 dh1024.pem	#密钥协议文件服务器需要
+-rw-r--r--. 1 root root 3886 Oct 14 09:37 ett.crt
+-rw-r--r--. 1 root root  777 Oct 14 09:37 ett.csr
+-rw-------. 1 root root 1041 Oct 14 09:37 ett.key
+-rw-r--r--. 1 root root  361 Oct 14 09:37 index.txt
+-rw-r--r--. 1 root root   21 Oct 14 09:37 index.txt.attr
+-rw-r--r--. 1 root root   21 Oct 14 09:34 index.txt.attr.old
+-rw-r--r--. 1 root root  242 Oct 14 09:34 index.txt.old
+-rw-r--r--. 1 root root    3 Oct 14 09:37 serial
+-rw-r--r--. 1 root root    3 Oct 14 09:34 serial.old
+-rw-r--r--. 1 root root 4015 Oct 14 09:28 server.crt	#服务器端需要
+-rw-r--r--. 1 root root  773 Oct 14 09:28 server.csr
+-rw-------. 1 root root  916 Oct 14 09:28 server.key	#加密，服务器端需要
+-rw-r--r--. 1 root root 3891 Oct 14 09:34 test.crt	#客户端需要
+-rw-r--r--. 1 root root  769 Oct 14 09:34 test.csr
+-rw-------. 1 root root  916 Oct 14 09:34 test.key	#加密，客户端需要
+
+# 防止恶意攻击（如DOS、UDP prot flooding),我们生成一个"HMAC firewall"
+/usr/local/openvpn/sbin/openvpn --genkey --secret keys/ta.key
+
+# 创建openvpn的配置文件
+mkdir -p /etc/openvpn
+cd openvpn-2.2.2/sample-config-files
+cp server.conf client.conf /etc/openvpn/
+cd openvpn-2.2.2/easy-rsa/2.0
+cp -ap vars /etc/openvpn
+
+tree /etc/openvpn
+/etc/openvpn
+├── client.conf
+├── keys
+│   ├── 01.pem
+│   ├── 02.pem
+│   ├── 03.pem
+│   ├── ca.crt
+│   ├── ca.key
+│   ├── dh1024.pem
+│   ├── ett.crt
+│   ├── ett.csr
+│   ├── ett.key
+│   ├── index.txt
+│   ├── index.txt.attr
+│   ├── index.txt.attr.old
+│   ├── index.txt.old
+│   ├── serial
+│   ├── serial.old
+│   ├── server.crt
+│   ├── server.csr
+│   ├── server.key
+│   ├── ta.key
+│   ├── test.crt
+│   ├── test.csr
+│   └── test.key
+└── server.conf
+
+grep -vE ";|#|^$" server.conf 
+local 10.138.0.15
+port 1194
+proto tcp
+dev tun
+ca keys/ca.crt
+cert keys/server.crt
+key keys/server.key
+dh keys/dh1024.pem
+server 192.168.0.0 255.255.255.0
+ifconfig-pool-persist ipp.txt
+push "route 192.168.0.0 255.255.255.0" #让客户端建立到另一个子网的路由，可以多个。
+keepalive 10 120
+comp-lzo
+persist-key
+persist-tun
+status openvpn-status.log
+duplicate-cn
+client-to-client	#让不同的client可以相互通领信
+log /var/log/openvpn.log
+verb 3
+route 192.168.0.0 255.255.255.0 #配置到客户端后端子网的路由(多机房互连)
+client-config-dir ccd	#配置客户端特殊配置文件目录
+
+# 客户端自定义配置
+mkdir /etc/openvpn/ccd
+vi client
+iroute	ip net			#设置到这个机房网段的路由
+ifconfig-push ip1 ip2	#设置客户端为固定IP，可以不设置
+# OS环境检查
+防火墙、SELinux、路由功能
+
+# 启动openvpn
+/usr/local/openvpn/sbin/openvpn --config /etc/openvpn/server.conf &
+
+
+
+http://swupdate.openvpn.org/community/releases/openvpn-2.2.2-install.exe
+
+# 客户端配置文件
+client
+dev tun
+proto tcp
+remote 10.138.0.1 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+ca ca.crt
+cert test.crt
+key test.key
+ns-cert-type server
+comp-lzo
+verb 3
+#redirect-gateway def1 (路由异常增加此项)
+
+# 网络路由方式
+问题： 当VPN客户端的GW，不是VPN server内网地址的时候，所有的VPN客户端都要增加网络路由，命令如下：route add -net 10.8.0.0/24 gw 192.168.0.31
+如果VPN客户端的GW是VPN Server时，无需增加路由。（重启失效可配置静路由：vim /etc/sysconfig/static-router，此文件默认没有 ）
+
+# 抓包命令
+tcpdump -i eth0 -nn -X icmp
+tcpdump -nnn -s 10000 | grep -i icmp
+
+# NAT 方式连接
+/sbin/iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j SNAT --to-source 192.168.0.31
+# IP不固定可以用伪装
+iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE 
+
+# 其它命令
+iptables -t nat -A PREROUTING -d 10.138.0.15 -p tcp -m tcp --dport 3389 -j DNAT --to-destination 192.168.0.21:3389 
+iptables -t nat -A POSTROUTING -d 192.168.0.0/24  -j SNAT --to-source 192.168.0.31
+iptables -A FORWARD -d 192.168.0.21 -o eth0 -p tcp -m tcp --dport 3389 -j ACCEPT 
+iptables -A FORWARD -s 192.168.0.21 -i eth0 -p tcp -m tcp --sport 3389 -j ACCEPT
+
+# openvpn 客户端撤销单个用户证书
+source vars
+./revoke-full test #生成crl.pem 
+cp crl.pem /etc/openvpn/keys/crl.pem
+
+cat keys/index.txt (被标记为"R")
+
+vim server.conf(增加以下配置使撤销生效)
+crl-verify /etc/openvpn/keys/crl.pem
+
+# linux客户端的安装跟服务器端一样，只有配置文件不同
+
+#open vpn 负载均衡
+1. 两台openvpn server
+2.  共享 server 的配置文件
+	监听的IP需要修改
+	
+3. 客户端配置	
+方法一：客户端密钥文件需要一份，配置文件要生成两份(要修改连接服务器IP)
+
+方法二：正常的客户端配置，只需增加以下参数(推荐使用)
+remote	openvpn_server_ip prot
+remote	openvpn_server_ip prot
+remote-random		#随机从上面连接一台VPN Server
+resolv-retry	20	#20s后重新连接
+
+方法三：通过DNS的A记录，(DNS缓存有问题) 
