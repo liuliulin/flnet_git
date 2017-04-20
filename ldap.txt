@@ -1,0 +1,190 @@
+
+# 安装 ldap
+yum install openldap*
+
+rpm -qa | grep openldap*
+openldap-2.4.40-12.el6.x86_64
+openldap-servers-2.4.40-12.el6.x86_64
+openldap-devel-2.4.40-12.el6.x86_64
+openldap-servers-sql-2.4.40-12.el6.x86_64
+openldap-clients-2.4.40-12.el6.x86_64
+
+yum install nscd nss-pam-ldapd pcre pcre-*
+yum install nss
+
+# 配置 ldap master
+pwd
+/etc/openldap
+cp /usr/share/openldap-servers/slapd.conf.obsolete slapd.conf
+
+# 生成密码
+slappasswd -s Foxconn88
+{SSHA}nNVPiWf5FS5i/HYHSaNnaOIxdSsIkTs5
+
+vi sladp.conf
+rootpw		{SSHA}nNVPiWf5FS5i/HYHSaNnaOIxdSsIkTs5  (增加以下行,需要隔一个Tab键)
+
+# 配置LDAP Server
+
+diff slapd.conf.bak slapd.conf
+115,117c115,117
+< suffix		"dc=my-domain,dc=com"
+< checkpoint	1024 15
+< rootdn		"cn=Manager,dc=my-domain,dc=com"
+---
+> suffix		"dc=etiantian,dc=org"
+> #checkpoint	1024 15
+> rootdn		"cn=admin,dc=etiantian,dc=org"
+
+# 配置日志
+cat >> /etc/openldap/slapd.conf<<EOF
+loglevel 296
+cachesize 1000
+checkpoint 2048 10
+EOF
+
+# 配置rsyslog
+vi /etc/rsyslog.conf
+local4.*	/var/log/ldap.log
+
+/etc/init.d/rsyslog restart
+
+# 配置数据库
+cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
+chown ldap:ldap /var/lib/ldap/DB_CONFIG 
+chmod 700 /var/lib/ldap/
+
+# 检查配置文件
+slaptest -u
+config file testing succeeded
+
+# 启动
+/etc/init.d/slapd start
+chkconfig slapd on
+
+# 重新生成配置
+rm -rf /etc/openldap/slapd.d/*
+slaptest -f /etc/openldap/slapd.conf -F /etc/openldap/slapd.d/
+chown -R ldap:ldap /etc/openldap/slapd.d/
+
+# 数据的导入(以文件的方式)
+# 安装 migrationtools 工具
+yum -y install migrationtools
+# 配置DN
+vim /usr/share/migrationtools/migrate_common.ph
+ 70 # Default DNS domain
+ 71 $DEFAULT_MAIL_DOMAIN = "flnet.com";
+ 72 
+ 73 # Default base 
+ 74 $DEFAULT_BASE = "dc=flnet,dc=com";
+
+# 生成数据
+/usr/share/migrationtools/migrate_base.pl >base.ldif
+/usr/share/migrationtools/migrate_passwd.pl > passwd.ldif (生成账号数据，可选择)
+useradd echoliu
+useradd F7400343
+egrep "echoliu|F7400343" /etc/passwd > passwd.txt
+/usr/share/migrationtools/migrate_passwd.pl passwd.txt > passwd.ldif
+egrep "echoliu|F7400343" /etc/group > group.txt
+/usr/share/migrationtools/migrate_group group.txt > group.ldif
+
+# 导入数据
+ldapadd -x -H ldap://flnet.com -D "cn=admin,dc=flnet,dc=com" -W -f base.ldif
+ldapadd -x -H ldap://flnet.com -D "cn=admin,dc=flnet,dc=com" -W -f passwd.ldif
+ldapadd -x -H ldap://flnet.com -D "cn=admin,dc=flnet,dc=com" -W -f group.ldif
+
+# 查数据
+ldapsearch -LLL -w Foxconn88 -x -H ldap://flnet.com -D "cn=admin,dc=flnet,dc=com" -b "dc=flnet,dc=com" "(uid=*)"
+
+# 备份数据
+ldapsearch -LLL -w Foxconn88 -x -H ldap://etiantian.org -D "cn=admin,dc=etiantian,dc=org" -b "dc=etiantian,dc=org" > bak.ldif
+
+# 配置 web 管理
+yum install -y httpd php php-ldap php-gd
+tar xf ldap-account-manager-3.7.tar.gz
+cd ldap-account-manager-3.7
+cd config
+cp config.cfg_sample config.cfg
+cp lam.conf_sample lam.conf
+
+vim lam.conf (修改DN,指定密码)
+egrep  "URL|admins|passwd|suffix" lam.conf | grep -v "#" 
+serverURL: ldap://localhost:389
+admins: cn=admin,dc=flnet,dc=com
+passwd: {SSHA}RjBruJcTxZEdcBjPQdRBkDaSQeY= iueleA==
+treesuffix: dc=flnet,dc=com
+types: suffix_user: ou=People,dc=flnet,dc=com
+types: suffix_group: ou=group,dc=flnet,dc=com
+types: suffix_host: ou=machines,dc=flnet,dc=com
+types: suffix_smbDomain: dc=flnet,dc=com
+
+chown -R apache.apache /var/www/html/ldap/
+
+
+# SVN通过LDAP认证(两种服务在同一服务器上)
+# 安装与配置 saslauthd
+yum install *sasl*
+
+# 更改成本机系统认证方式(PS:用于测试)
+sed -i 's/MECH=pam/MECH=shadow/g' /etc/sysconfig/saslauthd
+/etc/init.d/saslauthd start
+# 用系账号测试
+testsaslauthd -u root -p Foxconn88
+0: OK "Success."
+
+# 更改为LDAP认证方式
+sed -i 's/MECH=shadow/MECH=ldap/g' /etc/sysconfig/saslauthd
+# 指定LDAP服务器信息
+vim /etc/sysconfig/saslauthd.conf
+ldap_servers: ldap://flnet.com/
+ldap_bind_dn: cn=admin,dc=flnet,dc=com
+ldap_bind_pw: Foxconn88
+ldap_search_base: ou=People,dc=flnet,dc=com
+ldap_filter: uid=%U
+ldap_password_attr: userPassword
+
+# 用LDAP用户测试
+testsaslauthd -u echoliu -p Foxconn88
+
+# 新增SVN配置文件
+vim /etc/sasl2/svn.conf
+pwcheck_method: saslauthd
+mech_list: PLAIN LOGIN
+
+# 安装SVN Server(略)
+# 修改SVN配置文件，启用sasl认证
+vim svnserve.conf
+use-sasl =true
+
+# svn注意授权的配置
+ldap_user = echoliu,F7400343
+[sadoc:/]
+@ldap_user = rw
+
+# SVN 客户端测试(可在本机或另找一台client测试)
+svn co svn://10.138.0.22:/sadoc sadoc
+
+
+
+
+# samba
+
+1.遇见的两个错误及其原因
+ldap_add: Invalid syntax (21)
+ additional info: objectclass: value #0 invalid per syntax
+原因：ldif文件中存在空格
+ldap_add: Undefined attribute type (17)
+ additional info: dn: attribute type undefined
+原因：should put an empty line in the ldif file between two entries
+2.正确书写格式： 
+（1空行）
+dn:（空格） dc=mail,dc=kaspersky,dc=com（结尾无空格）
+objectclass: （空格）dcObject（结尾无空格）
+objectclass: （空格）organization（结尾无空格）
+o: （空格）kaspersky（结尾无空格）
+dc:（空格） test（结尾无空格）
+（1空行）
+dn: （空格）cn=test,dc=mail,dc=kaspersky,dc=com（结尾无空格）
+objectclass: （空格）organizationalRole（结尾无空格）
+cn: （空格）test（结尾无空格）
+（结尾无空行） 
