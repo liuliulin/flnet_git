@@ -1,0 +1,172 @@
+open vpn 负载均衡
+1. 两台openvpn server
+2. 共享 server 的配置文件
+	监听的IP需要修改
+	
+3 客户端配置	
+方法一：客户端密钥文件需要一份，配置文件要生成两份(要修改连接服务器IP)
+方法二：正常的客户端配置，只需增加以下参数(推荐使用)
+remote	openvpn_server_ip prot
+remote	openvpn_server_ip prot
+remote-random		#随机从上面连接一台VPN Server
+resolv-retry	20	#20s后重新连接
+
+方法三：通过DNS的A记录，(DNS缓存有问题)
+
+#openvpn 的统一身份认证
+1. 通过本地密钥
+2. 通过本地文件DB
+3. 通过数据库(pam_mysql)
+4. openldap 统一认证
+	a: openvpn-auth-ldap
+	b: 认证和授权分开
+5. Radius 认证
+
+
+
+###
+yum install -y nss nss-pam-ldapd openldap-clients python-ldap
+
+
+vi /etc/openvpn/users-allowed.conf
+echoliu
+
+vi /etc/openvpn/user.conf
+echoliu
+Foxconn88
+
+vi check_credit.py
+chmod +x check_credit.py
+
+#!/usr/bin/python
+import sys
+import os
+import logging
+import ldap
+
+#setting for ldap
+ldap_uri = "ldap://flnet.com:389"
+ldap_starttls = True
+ldap_dn = "uid=%s,ou=People,dc=flnet,dc=com"
+
+#settting for logging
+log_filename = "/etc/openvpn/tmp.log" 
+log_format = "%(asctime)s %(levelname)s %(message)s"
+log_level = logging.DEBUG
+
+#seting for authorization
+auth_filename = "/etc/openvpn/users-allowed.conf" 
+
+def get_users(fpath):
+	fp = open(fpath, "rb")
+	lines = fp.readlines()
+	fp.close()
+	users = {}
+	for line in lines:
+		line = line.strip()
+		if len(line) <= 0 or line.startswith('#'):
+			continue
+		users[line] = True
+	return users
+	
+def get_credits(fpath):
+	fp = open(fpath, "rb")
+	lines = fp.readlines()
+	fp.close()
+	assert len(lines) >= 2, "invalid credit file"
+	username = lines[0].strip()
+	password = lines[1].strip()
+	return (username, password)
+	
+def check_credits(username, password):
+	passed = False
+	ldap.set_option(ldap.OPT_PROTOCOL_VERSION, ldap.VERSION3)
+	l = ldap.initialize(ldap_uri)
+	if ldap_starttls:
+		l.start_tls_s()
+	try:
+		l.simple_bind_s(ldap_dn %(username,), password)
+		passed = True
+	except ldap.INVALID_CREDENTIALS, e:
+		logging.error("username, '%s'password,'%s', failed verifying" %(username,password))
+	l.unbind()
+	return passed
+	
+def main(argv):
+	credit_fpath = argv[1]
+	(username,password) = get_credits(credit_fpath)
+	#print(username, password)
+	#sys.exit()
+	if len(username) <= 0 or len(password) <= 0:
+		logging.error("invalid creadits for user '%s'" % username)
+		return 1
+	logging.info("user '%s',password '%s' request logging" % (username,password))
+	#sys.exit()
+	if check_credits(username,password):
+		users = get_users(auth_filename)
+		if not username in users:
+			logging.error("user '%s' not authorized to access" % username)
+			return 1
+		logging.info("access of user '%s' granted" % username)
+		return 0
+	else:
+		logging.error("access of user '%s' denied" % username)
+		return 1
+		
+if __name__ == "__main__":
+	logging.basicConfig(format=log_format,filename=log_filename,level=log_level)
+	if len(sys.argv) != 2:
+		logging.fatal("usage: %s <credit-file>" % sys.argv[0])
+		sys.exit(1)
+	rcode = 1
+	try:
+		rcode = main(sys.argv)
+	except Exception, e:
+		logging.fatal("execption happened: %s" % str(e))
+		rcode = 1
+	#print(os.system('echo $?))
+	sys.exit(rcode)
+
+		
+		
+##
+vi /etc/openldap/ldap.conf
+TLS_REQCERT allow
+
+# vim /etc/openvpn/server.conf
+
+local 10.138.0.15
+port 1194
+proto tcp
+dev tun
+ca keys/ca.crt
+cert keys/server.crt
+key keys/server.key
+dh keys/dh1024.pem
+server 10.8.0.0 255.255.255.0
+ifconfig-pool-persist ipp.txt
+push "dhcp-option DNS 10.150.7.31"
+push "route 192.168.0.0 255.255.255.0"
+keepalive 10 120
+comp-lzo
+persist-key
+persist-tun
+status openvpn-status.log
+#duplicate-cn
+client-to-client
+log /var/log/openvpn.log
+verb 3
+
+#for vpn auth by ldap
+auth-user-pass-verify /etc/openvpn/check_credit.py via-file
+client-cert-not-required
+username-as-common-name
+script-security 3
+
+
+
+# openvpn客户端配置
+#cert xxx.crt
+#key xxx.key
+auth-user-pass
+
