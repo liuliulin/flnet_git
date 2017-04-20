@@ -1,0 +1,28 @@
+MSU
+这种格式的安装包双击就可以运讲述一下安装命令该如何使用。
+命令格式如下：
+wusa.exe "X:\路径\windows10.0-kb3172988-x64_c3f911bf701a57a0423828fec6707b8a0b181453.msu" /quiet /norestart
+其中，wusa.exe是安装命令，引号中的内容是更新包路径，后面/quiet表示静默安装，/norestart表示无需重启。
+
+CAB
+这种格式多见于语言包，但今天介绍的方法并不适用于语言包的安装，只适用于这种格式的更新包安装，要十分注意这点。用到的工具同样是命令提示符，命令格式如下：
+dism /online /add-package /packagepath:"X:\路径\文件名.cab"
+start /w pkgmgr /ip /m:D:\Windows10.0-KB3036140-x86.cab
+
+
+使用系统自带的DISM程序可以为安装盘中WIM文件集成补丁。
+具体操作上只需三条命令
+dism /mount-wim /wimfile:d:\install.wim /index:4 /mountdir:d:\win2012
+
+将ISO文件中的install.wim文件提取出来,放于D盘下面。
+在D盘新建win2012文件夹用于装载系统文件
+index:4指WIM文件中排序第4的系统
+
+dism /Get-ImageInfo /imagefile:d:\install.wim
+查看index号
+
+dism /image:d:\win2012 /add-package /packagepath:d:\Hotfix
+将需集成的补丁全放于D盘的Hotfix文件夹下面。
+
+dism /unmount-wim /mountdir:d:\win2012 /commit
+卸载文件，完成集成工作
