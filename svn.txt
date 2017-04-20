@@ -1,0 +1,145 @@
+# 安装svn
+yum install subversion
+
+# 创建 数据存储根目录
+mkdir -p /svndata
+# 创建用户存储目录
+mkdir -p /svnpasswd
+
+# 启动svn
+svnserver -d -r /svndata
+-d 以守护进程启动
+-r 指定根据目录
+ 3690  服务端口
+
+ # 创建svn版本库
+ svnadmin create /svndata/sadoc
+ 
+ # 调整svn配置文件
+ #diff svnserve.conf.bak svnserve.conf
+19,20c19,20
+< # anon-access = read
+< # auth-access = write
+---
+> anon-access = read
+> auth-access = write
+27c27
+< # password-db = passwd
+---
+> password-db = /svnpasswd/passwd
+36c36
+< # authz-db = authz
+---
+> authz-db = /svnpasswd/authz
+
+# 复制用户配置文件及修改权限
+cp authz passwd /svnpasswd
+chmod 700 authz passwd
+
+# 修改权限文件
+vim authz
+
+# sagroup = echoliu,gongli #指定用户组
+[sadoc:/]	#项目名称及根目录
+echoliu = rw	#分配用户权限
+# @gongli		#分配组
+
+vim passwd
+echoliu = echoliu
+
+# svn linux客户端
+svn checkout (co) remotepath localpath --username=user --password=passwd
+svn co svn://10.138.0.22:/sadoc sadoc
+
+# linux字符集问题
+export LC_CTYPE="en_US.UTF-8"
+export LC_ALL=
+
+# 查看数据
+svn ls (list) 
+
+# 提交文件
+svn add filename
+svn ci -m "update"
+
+# 一般使用规范
+mkdir -p /svn/trunk /svn/branch /svn/tag
+svn import /svn file:///svndata/sadoc -m "import"
+
+# 复制分支
+svn copy svn://ip/sadoc/trunk svn://ip/sadoc/branch/branch_cms -m "modifiy" --username=user --password=passwd
+
+# 勾子脚本（勾子脚本就是被某些版本库事件触发的程序）
+post-commit	#在提交完成成功创建版本之后执行该勾脚本
+pre-commit  #提交完成前触发执行该脚本
+
+vim post-commit (需要增加可执行权限)
+
+REPOS="$1"
+REV="$2"
+export LANG=en_US.UTF-8
+LOGPATH="/app/log"
+[ ! -d ${LOGPATH} ] && mkdir ${LOGPATH} -p
+#update content from svn
+SVN=/usr/bin/svn
+$SVN update --username user	--password passwd  /data/www
+if [ $? -eq 0 ]
+    then
+		/usr/bin/rsync -az --delete /data/www /tmp
+fi
+
+
+#vim pre-commit 
+REPOS="$1"
+REV="$2"
+#限制文件大小，5M
+MAX_SIZE=5242880
+#增加文件后缀名
+FILTER='\.(zip|rar|o|obj|tar|gz)$'
+
+SVNLOOK=/usr/bin/svnlook
+
+#LOGMSG=`$SVNLOOK log -t "$TXN" "$REPOS" |grep "[a-zA-Z0-9]" |wc -c`
+LOGMSG=`$SVNLOOK log -t "$TXN" "$REPOS" | wc -c`
+
+if [ "$LOGMSG" -lt 9 ];
+then
+	echo -e "nLog message cann't be empty! you must input more then 8 chars as comment!" 1>&2
+exit 1
+fi
+
+files=$($SVNLOOK changed -t $TXN $REPOS cud -d " " -f 4-)
+
+#echo "$files">&2
+#echo "$r">&2
+#exit 1
+
+rc=0
+
+echo "$files" | while read f:
+do
+#check file type
+	if echo $f|tr A-Z a-z | grep -Eq $FILTER:
+	then
+		echo "File $f is not allow ($FILTER) file" >&2
+		exit 1;
+		
+	fi 
+	
+#check file size
+fileszie=`$SVNLOOK cat -t "$TXN" "$REPOS" "$f" | wc -c`
+if [ "$filesize" -gt "$MAX_SIZE" ];
+then
+	echo "File $f is too large(must <=$MAX_SIZE) B " >&2
+	exit 1
+fi
+done
+
+#All checks passed, so allowd the commit.
+if [ $? -eq 1 ];
+then
+	exit 1
+else
+	exit 0
+fi
+		
