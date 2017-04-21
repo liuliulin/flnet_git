@@ -391,6 +391,29 @@ vim server.conf(增加以下配置使撤销生效)
 crl-verify /etc/openvpn/keys/crl.pem
 
 # linux客户端的安装跟服务器端一样，只有配置文件不同
+# tree .
+.
+├── ca.crt
+├── liuliulin.conf  客户端的配置文件
+├── liuliulin.crt
+├── liuliulin.csr
+└── liuliulin.key
+
+cat liuliulin.conf 
+client
+dev tun
+proto tcp
+remote 10.130.170.66 443
+#resolv-retry infinite
+#nobind
+persist-key
+persist-tun
+ca ca.crt
+cert liuliulin.crt
+key liuliulin.key
+#ns-cert-type server
+comp-lzo
+#verb 3
 
 #open vpn 负载均衡
 1. 两台openvpn server
